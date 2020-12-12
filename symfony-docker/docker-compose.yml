@@ -1,0 +1,80 @@
+version: '3.5'
+
+services:
+    db:
+        image: mysql:8.0.20
+        command: --default-authentication-plugin=mysql_native_password
+        volumes:
+            - "db_app:/var/lib/mysql"
+        environment:
+            MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+            MYSQL_DATABASE: ${MYSQL_DATABASE}
+            MYSQL_USER: ${MYSQL_USER}
+            MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+        ports:
+            - 3307:3306
+        networks:
+            - symfony
+    php:
+        build:
+            context: .
+            dockerfile: Dockerfile-php
+            args:
+                TIMEZONE: ${TIMEZONE}
+        volumes:
+            - ./symfony/:/var/www/symfony/
+        networks:
+            - symfony
+    nginx:
+        build:
+            context: .
+            dockerfile: Dockerfile-nginx
+        volumes:
+            - ./symfony/:/var/www/symfony/
+        ports:
+            - 8001:80
+        networks:
+            - symfony
+
+    elasticsearch:
+        container_name: elasticsearch
+        image: docker.elastic.co/elasticsearch/elasticsearch:7.9.3
+        environment:
+            discovery.type: "single-node"
+        ports:
+            - "9200:9200"
+        networks:
+            elk_stack:
+                aliases:
+                    - "elasticsearch"
+    logstash:
+        container_name: logstash
+        image: docker.elastic.co/logstash/logstash:7.9.3
+        depends_on: 
+            - elasticsearch
+        volumes:
+            - ./elk/logstash/pipelines.yml:/usr/share/logstash/config/pipelines.yml:cached
+            - ./elk/logstash/conf.d:/etc/logstash/conf.d:cached
+            - ./logs/symfony:/var/www/symfony/var/log:cached
+            - ./logs/nginx:/var/log/nginx:cached
+        networks:
+            - elk_stack
+    kibana:
+        container_name: kibana
+        depends_on: 
+            - elasticsearch
+        image: docker.elastic.co/kibana/kibana:7.9.3
+        environment:
+            SERVER_NAME: localhost
+            ELASTICSEARCH_HOSTS: http://elasticsearch:9200
+        networks:
+            - elk_stack
+        ports:
+            - "81:5601"
+
+volumes:
+    db_app:
+
+networks:
+    symfony:
+    elk_stack:
